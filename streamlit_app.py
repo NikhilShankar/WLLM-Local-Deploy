@@ -45,18 +45,8 @@ if uploaded_file is not None:
     left_co, cent_co,last_co = st.columns(3)
     with cent_co:
         st.image(uploaded_file, caption="Uploaded Image", width=100)
-    #st.write("Sending the image to the API for predictions...")
-    image = Image.open(uploaded_file)
-
-    # Resize the image to 300x300
-    image = image.resize((300, 300))
-
-    # Convert the resized image to bytes to send it in the API request
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG')  # You can save it in 'JPEG' or 'PNG'
-    img_byte_arr.seek(0)
     # Convert the uploaded file into a format compatible with the API
-    files = {"image": img_byte_arr}  # Convert file to bytes for the request
+    files = {"image": uploaded_file.getvalue()}  # Convert file to bytes for the request
 
     
 
