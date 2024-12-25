@@ -14,6 +14,7 @@ import tempfile
 from WLLMSimilarityCalculatorAdvancedCorrected import SimilarityCalculatorAdvancedCorrected2
 from WLLMModelLoader import WLLMModelLoader
 from botocore.config import Config
+import random
 
 
 class CosinePredictionHelper:
@@ -59,7 +60,7 @@ class CosinePredictionHelper:
         print(f"Upload s3 : {path} : {url}")
         return url
 
-    def run_pipeline(self, test_image_path: str) -> Tuple[Dict[str, float], Dict[str, float], str]:
+    def run_pipeline(self, test_image_path: str, shouldCreateANewImageWithPredictions=False) -> Tuple[Dict[str, float], Dict[str, float], str]:
         """
         Run the prediction pipeline
         
@@ -71,31 +72,73 @@ class CosinePredictionHelper:
 
         # Create dataframe
         df = self.create_dataframe(predictions)
-
+        plot_url = ""
+        top_avg_personalities, top_score_personalities = self.create_top_n_plot(df, self.N)
         # Create and save plot to temporary file
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-            top_avg_personalities, top_score_personalities = self.create_top_n_plot(df, self.N)
-            self.save_personality_images(
-                self.image_dataset_path,
-                test_image_path,
-                top_avg_personalities,
-                N=self.N,
-                save_path=tmp.name
-            )
-            
-            # Upload to S3
-            plot_filename = f"prediction_plot_{uuid.uuid4()}.png"
-            plot_url = self._upload_to_s3(tmp.name, plot_filename)
-            
-            # Clean up temporary file
-            print("17")
-            #os.unlink(tmp.name)
+        if shouldCreateANewImageWithPredictions:
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                self.save_personality_images(
+                    self.image_dataset_path,
+                    test_image_path,
+                    top_avg_personalities,
+                    N=self.N,
+                    save_path=tmp.name
+                )
+                
+                # Upload to S3
+                plot_filename = f"prediction_plot_{uuid.uuid4()}.png"
+                plot_url = self._upload_to_s3(tmp.name, plot_filename)
+                
+                # Clean up temporary file
+                print("17")
+                #os.unlink(tmp.name)
+        top_N_personality_url_response = self.getTop5PersonalityImagesFromS3(top_avg_personalities, self.N)
         print("16")
         return (
             top_avg_personalities.to_dict(),
             top_score_personalities.to_dict(),
-            plot_url
+            plot_url,
+            top_N_personality_url_response
         )
+    
+    def getTop5PersonalityImagesFromS3(self, top_avg, N: int):
+        personality_names = top_avg.index
+        final_response = {}
+        for i in range(N):
+            if i >= len(personality_names):
+                print("Error 33")
+                break
+            personality = personality_names[i]
+            # Define the S3 bucket name and folder (prefix)
+            bucket_name = 'wholookslikeme'
+            folder_name = f'dataset/{personality}/'  # Include the trailing slash
+
+            # List the objects in the folder (using prefix)
+            response = self.s3_client.list_objects_v2(Bucket=bucket_name, Prefix=folder_name)
+            # Check if the folder contains files
+            if 'Contents' in response:
+                # Get the total number of files
+                total_files = len(response['Contents'])
+                # Generate a random index
+                random_index = random.randint(0, total_files - 1)
+                # Get the random file's key (file path)
+                random_file_key = response['Contents'][random_index]['Key']
+                # Print the bucket name and key for the random file
+                print(f"Random file from bucket {bucket_name}:")
+                print(f"Key: {random_file_key}")
+                url = self.s3_client.generate_presigned_url(
+                    ClientMethod='get_object',
+                    Params={
+                        'Bucket': bucket_name,
+                        'Key': random_file_key,
+                    },
+                    ExpiresIn=3600  # URL expires in 1 hour
+                )
+                print(f"URL :{url}")
+                final_response[personality] = url
+            else:
+                print("No files found in the specified folder.")
+        return final_response
 
     def save_personality_images(self, dataset_path: str, test_image_path: str, 
                               top_avg, N: int, save_path: str):

@@ -16,7 +16,7 @@ MODEL_MAP = {
 
 predictor = CosinePredictionHelper(
     models=MODEL_MAP,
-    N=5,
+    N=3,
     image_dataset_path="dataset",
     s3_bucket="wllm-public",
     s3_output_prefix="predictions"
@@ -38,12 +38,13 @@ def predict():
             
             # Run prediction pipeline
             try:
-                top_avg, top_score, plot_url = predictor.run_pipeline(tmp.name)
+                top_avg, top_score, plot_url, topN = predictor.run_pipeline(tmp.name, shouldCreateANewImageWithPredictions=False)
                 print("20")
                 response = {
                     'top_avg_personalities': top_avg,
                     'top_score_personalities': top_score,
-                    'plot_url': plot_url
+                    'plot_url': plot_url,
+                    'topN': topN
                 }
                 print("21")
                 return jsonify(response), 200
